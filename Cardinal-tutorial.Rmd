@@ -518,6 +518,27 @@ image(rcc_stest, model=22, layout=c(2,4))
 ```
 
 
+## Find mass features colocalized with m/z 886
+
+```{r coloc-1}
+colocalized(rcc_binned, mz=886)
+```
+
+## RCC m/z 886
+
+```{r coloc-2, fig.height=4, fig.width=9}
+image(rcc_binned, mz=886, layout=c(2,4),
+      contrast.enhance="histogram")
+```
+
+## RCC m/z 751
+
+```{r coloc-3, fig.height=4, fig.width=9}
+image(rcc_binned, mz=751, layout=c(2,4),
+      contrast.enhance="histogram")
+```
+
+
 
 # Interactive visualization
 
