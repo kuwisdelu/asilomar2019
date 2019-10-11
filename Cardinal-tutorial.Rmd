@@ -1,0 +1,542 @@
+---
+title: "Cardinal tutorial"
+author: "Kylie Ariel Bemis"
+date: "10/10/2019"
+output: beamer_presentation
+---
+  
+  ```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE)
+```
+
+## Slides and code
+
+The R Markdown for this tutorial is available on Github at:
+
+https://github.com/kuwisdelu/asilomar2019
+
+Use R or RStudio to run the document (you may need to update some file paths).
+
+## Installation
+
+First make sure `BiocManager` is installed.
+
+Then use `BiocManager` to install `Cardinal`.
+
+```{r install, eval=FALSE}
+if ( !requireNamespace("BiocManager") )
+  install.packages("BiocManager")
+
+BiocManager::install("Cardinal")
+```
+
+For the datasets used in the statistical analysis examples, we'll also install `CardinalWorkflows`.
+
+```{r install-workflows, eval=FALSE}
+BiocManager::install("CardinalWorkflows")
+```
+
+## Getting started
+
+Load the Cardinal package with `library()`.
+
+```{r library, message=FALSE}
+library(Cardinal)
+
+register(SerialParam())
+```
+
+*Note: Cardinal supports parallelization via the `BiocParallel` package. The code above registers a serial (i.e., non-parallel) backend for this session.*
+
+
+
+# Cardinal basics
+
+## Example data
+
+To demonstrate reading data and visualization, we'll use [example imzML files from imzml.org](https://ms-imaging.org/wp/imzml/example-files-test/).
+
+Specifically, we are going to reproduce the first image from the imzml.org website, which comes from the paper *"Histology by mass spectrometry: label-free tissue characterization obtained from high-accuracy bioanalytical imaging"* by Rompp et al.
+
+The data is available from https://www.ebi.ac.uk/pride/archive/projects/PXD001283.
+
+## Importing data
+
+We can use `readMSIData()` to import data from an imzML file.
+
+\small
+```{r mouse}
+file <- file.path("~/Documents/Datasets/PRIDE/PXD001283",
+                  "HR2MSI mouse urinary bladder S096.imzML")
+
+mouse <- readMSIData(file, mass.range=c(400, 900),
+                     resolution=0.01, units="mz")
+```
+\normalsize
+
+Providing the mass range and binning resolution will allow faster importing; otherwise, `Cardinal` will try to infer them from reading the data.
+
+---
+
+```{r mouse-show}
+mouse
+```
+
+## Accessing pixel metadata
+
+\scriptsize
+```{r mouse-pdata}
+pixelData(mouse)
+```
+\normalsize
+
+## Accessing feature metadata
+
+\scriptsize
+```{r mouse-fdata}
+featureData(mouse)
+```
+\normalsize
+
+## Accessing the spectra matrix
+
+\scriptsize
+```{r mouse-spectra}
+spectra(mouse)
+```
+\normalsize
+
+## Visualize mass spectra
+
+```{r mouse-plot-1, fig.height=4, fig.width=9}
+plot(mouse, coord=list(x=150, y=100))
+```
+
+## Visualize ion images
+
+```{r mouse-image-1, fig.height=3, fig.width=6}
+image(mouse, mz=798.54, plusminus=0.01)
+```
+
+## Visualize ion images (w/ enhancement)
+
+```{r mouse-image-2, fig.height=3, fig.width=6}
+image(mouse, mz=798.54, plusminus=0.01,
+      contrast.enhance="suppress",
+      smooth.image="gaussian")
+```
+
+## Visualize ion images (superposed)
+
+```{r mouse-image-3, fig.height=3, fig.width=6}
+image(mouse, mz=c(743.5483, 798.5419, 741.5307),
+      plusminus=0.01, superpose=TRUE,
+      contrast.enhance="suppress",
+      normalize.image="linear",
+      col=c("red", "green", "blue"))
+```
+
+
+
+# Segmentation
+
+## Pig fetus section
+
+We will use some pre-processed datasets and pre-calculated analysis results from the `CardinalWorkflows` package.
+
+For segmentation, we will use data from a pig fetus cross-section.
+
+
+```{r pig-1, message=FALSE}
+data(pig206, package="CardinalWorkflows")
+
+pig206_peaks <- as(pig206.peaks, "MSImagingExperiment")
+```
+
+\scriptsize
+*Note: The datasets provided in `CardinalWorkflows` are stored in an older format, so we need to coerce them to an `MSImagingExperiment` using `as()`.*
+\normalsize
+
+## Pig fetus m/z 888
+
+```{r pig-image, fig.height=3, fig.width=6}
+image(pig206_peaks, mz=888)
+```
+
+## Spatial shrunken centroids
+
+We can use `spatialShrunkenCentroids()` to perform spatial shrunken centroids clustering.
+
+This method requires three parameters:
+
+- `r` = smoothing radius
+
+- `k` = initial number of segments
+
+- `s` = sparsity parameter
+
+The method performs automated feature selection controlled by the sparsity parameter `s`.
+
+\small
+```{r pig-ssc, eval=FALSE}
+set.seed(2019)
+pig206_sscg <- spatialShrunkenCentroids(pig206_peaks,
+                                        r=1, k=10,
+                                        s=c(0,3,6,9),
+                                        method="gaussian")
+```
+\normalsize
+
+## Loading pre-calculated segmentation results
+
+To save time, we will load some pre-calculated segmentation results.
+
+We'll load results for two types of spatial smoothing (`method="gaussian"` and `method="adaptive").
+
+\small
+```{r pig-ssc-load}
+data(pig206_analyses, package="CardinalWorkflows")
+pig206_sscg <- as(pig206.sscg, "SpatialShrunkenCentroids2")
+pig206_ssca <- as(pig206.ssca, "SpatialShrunkenCentroids2")
+```
+\normalsize
+
+\scriptsize
+*Note: The datasets provided in `CardinalWorkflows` are stored in an older format, so we need to coerce them to an `MSImagingExperiment` using `as()`.*
+\normalsize
+
+---
+
+\scriptsize
+```{r pig-sscg}
+summary(pig206_sscg)
+```
+\normalsize
+
+---
+
+\scriptsize
+```{r pig-ssca}
+summary(pig206_ssca)
+```
+\normalsize
+
+## Probability of segment membership (Gaussian smoothing)
+
+```{r pig-sscg-prob, fig.height=3, fig.width=6}
+image(pig206_sscg, model=list(r=2, k=20, s=9),
+      values="probability")
+```
+
+## Probability of segment membership (adaptive smoothing)
+
+```{r pig-ssca-prob, fig.height=3, fig.width=6}
+image(pig206_ssca, model=list(r=1, k=20, s=9),
+      values="probability")
+```
+
+## Brain, liver, and heart segments
+
+```{r pig-sscg-cols, fig.height=3, fig.width=6}
+image(pig206_sscg, model=list(r=2, k=20, s=9),
+      values="probability", column=c(3,5,6))
+```
+
+## Mean spectra for brain, liver, and heart
+
+```{r pig-sscg-centers, fig.height=3, fig.width=6}
+plot(pig206_sscg, model=list(r=2, k=20, s=9),
+     values="centers", column=c(3,5,6), lwd=2)
+```
+
+## Statistics for brain, liver, and heart
+
+```{r pig-sscg-stats, fig.height=3, fig.width=6}
+plot(pig206_sscg, model=list(r=2, k=20, s=9),
+     values="statistic", column=c(3,5,6), lwd=2)
+```
+
+## Most distinctive mass features for heart
+
+\small
+```{r pig-sscg-top}
+topFeatures(pig206_sscg, model=list(r=2, k=20, s=9), class==6)
+```
+\normalsize
+
+## Most distinctive mass features for heart
+
+```{r pig-image-regions, fig.height=3, fig.width=9}
+image(pig206_peaks, mz=c(187.3, 186.4, 179.4),
+      normalize.image="linear", layout=c(1,3))
+```
+
+
+
+
+# Classification
+
+## Renal cell carcinoma (RCC) dataset
+
+For classification, we will look at a dataset with 8 matched pairs of healthy tissue and tumor.
+
+```{r rcc-1}
+data(rcc, package="CardinalWorkflows")
+
+rcc_binned <- as(rcc.small, "MSImagingExperiment")
+```
+
+\scriptsize
+*Note: The datasets provided in `CardinalWorkflows` are stored in an older format, so we need to coerce them to an `MSImagingExperiment` using `as()`.*
+\normalsize
+
+## Diagnosis
+
+```{r rcc-diagnosis, fig.height=4, fig.width=9}
+image(rcc_binned, diagnosis ~ x * y,
+      layout=c(2,4), key=TRUE)
+```
+
+## RCC m/z 810
+
+```{r rcc-image, fig.height=4, fig.width=9}
+image(rcc_binned, mz=810, layout=c(2,4),
+      contrast.enhance="histogram",
+      normalize.image="linear")
+```
+
+## Cross-validation
+
+We use `crossValidate()` to perform cross-validation with spatial shrunken centroids classification.
+
+Each run (with a cancer/normal matched pair) is a separate CV fold.
+
+```{r rcc-cv, eval=FALSE}
+rcc_cv <- crossValidate(rcc_binned,
+                        .y=rcc_binned$diagnosis,
+                        .fun=spatialShrunkenCentroids,
+                        r=1, s=0:9,
+                        .fold=run(rcc_binned))
+```
+
+## Loading pre-calculated CV results
+
+To save time, we will load some pre-calculated CV results.
+
+```{r rcc-cv-load}
+data(rcc_analyses, package="CardinalWorkflows")
+
+rcc_cv <- as(rcc.cv.sscg, "CrossValidated2")
+rcc_cv$.response <- rcc_binned$diagnosis
+```
+
+\scriptsize
+*Note: The CV results provided in `CardinalWorkflows` are stored in an older format, so we need to coerce them to the newer version of the class using `as()`.*
+\normalsize
+
+---
+
+\tiny
+```{r rcc-cv-summary}
+summary(rcc_cv)
+```
+\normalsize
+
+---
+
+Which is the most accurate model?
+
+\scriptsize
+```{r rcc-cv-best}
+i <- which.max(summary(rcc_cv)$Accuracy)
+summary(rcc_cv)[i,]
+```
+\normalsize
+
+---
+
+Fit the model with the best parameters to the full dataset.
+
+\scriptsize
+```{r rcc-sscg}
+rcc_sscg <- spatialShrunkenCentroids(rcc_binned,
+                                   y=rcc_binned$diagnosis,
+                                   r=3, s=20)
+summary(rcc_sscg)
+```
+\normalsize
+
+## Predicted probability of cancer/normal
+
+```{r rcc-sscg-prob, fig.height=4, fig.width=9}
+image(rcc_sscg, values="probability", layout=c(2,4))
+```
+
+## Mass features over/under-expressed in each class
+
+```{r rcc-sscg-stat, fig.height=4, fig.width=9}
+plot(rcc_sscg, values="statistic", lwd=2)
+```
+
+## Mass features associated with cancer
+
+```{r rcc-sscg-top-cancer}
+topFeatures(rcc_sscg, class=="cancer")
+```
+
+## m/z 886 associated with cancer
+
+```{r rcc-cancer-image, fig.height=4, fig.width=9}
+image(rcc_binned, mz=886, layout=c(2,4),
+      contrast.enhance="histogram",
+      normalize.image="linear")
+```
+
+## Mass features associated with normal
+
+```{r rcc-sscg-top-normal}
+topFeatures(rcc_sscg, class=="normal")
+```
+
+## m/z 215 associated with normal
+
+```{r rcc-normal-image, fig.height=4, fig.width=9}
+image(rcc_binned, mz=215, layout=c(2,4),
+      contrast.enhance="histogram",
+      normalize.image="linear")
+```
+
+
+
+
+# Statistical testing
+
+## Statistical testing
+
+Suppose we want to test which mass features are differentially abundant between cancer and normal tissue?
+
+We have N = 8 subjects per condition.
+
+Two approaches we might take using `Cardinal`:
+
+- Average all pixels in each tissue sample and compare means
+
+- Segment each tissue and compare distinctive segments
+
+Let's explore both.
+
+## Filter mass features by intensity thresholding
+
+\small
+```{r rcc-2}
+rcc_filt <- rcc_binned %>%
+  mzFilter(thresh.max=0.25) %>%
+  process()
+
+rcc_filt
+```
+\normalsize
+
+## Means-based testing
+
+We need to create a variable for each (subject x condition) combination.
+
+Then we can use `meansTest()` to calculate the mean intensities for each group and fit linear models for each mass feature.
+
+```{r mtest-fit}
+rcc_filt$sample <- interaction(run(rcc_filt),
+                               rcc_filt$diagnosis)
+
+rcc_mtest <- meansTest(rcc_filt, ~ diagnosis,
+                       groups=rcc_filt$sample)
+```
+
+---
+
+\tiny
+```{r mtest-summary}
+summary(rcc_mtest)
+```
+\normalsize
+
+## Significant mass features
+
+```{r mtest-top}
+topFeatures(rcc_mtest, p.adjust="fdr", AdjP < 0.05)
+```
+
+---
+
+```{r mtest-plot}
+plot(rcc_mtest, model=c(2,19,22,23))
+```
+
+---
+
+```{r mtest-image, fig.height=4, fig.width=9}
+image(rcc_mtest, model=22, layout=c(2,4))
+```
+
+## Segmentation-based testing
+
+To represent potentialy heterogeneity within the tissue, we can segment each tissue first and then compare the most mean intensities for the segments.
+
+First we use `spatialDGMM()` to fit segmentations for each mass feature, and then `segmentationTest()` fits linear models to the segments.
+
+```{r stest-fit}
+rcc_dgmm <- spatialDGMM(rcc_filt,
+                        r=1, k=2,
+                        groups=rcc_filt$sample)
+
+rcc_stest <- segmentationTest(rcc_dgmm, ~ diagnosis)
+```
+
+---
+
+\tiny
+```{r stest-summary}
+summary(rcc_stest)
+```
+\normalsize
+
+## Significant mass features
+
+```{r stest-top}
+topFeatures(rcc_stest, p.adjust="fdr", AdjP < 0.05)
+```
+
+---
+
+```{r stest-plot}
+plot(rcc_stest, model=c(2,19,22,23))
+```
+
+---
+
+```{r stest-image, fig.height=4, fig.width=9}
+image(rcc_stest, model=22, layout=c(2,4))
+```
+
+
+
+# Interactive visualization
+
+## Interactive visualization
+
+Shiny interface for Cardinal (under development) on Github...
+
+```{r eval=FALSE}
+if (!requireNamespace("remotes", quietly = TRUE))
+    install.packages("remotes")
+
+BiocManager::install("kuwisdelu/CardinalVis")
+
+library(CardinalVis)
+
+pig206 <- as(pig206, "MSImagingExperiment")
+
+msiVis(pig206)
+```
+
+# Questions
+
